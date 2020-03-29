@@ -1,12 +1,9 @@
 {
     "$schema": "http://json-schema.org/draft-04/schema#",
-    "_id": "kapi.acdc_queue.member_connect_accepted",
-    "description": "AMQP API for acdc_queue.member_connect_accepted",
+    "_id": "kapi.acdc_stats.call_exited_position",
+    "description": "AMQP API for acdc_stats.call_exited_position",
     "properties": {
         "Account-ID": {
-            "type": "string"
-        },
-        "Agent-ID": {
             "type": "string"
         },
         "Call-ID": {
@@ -14,25 +11,27 @@
         },
         "Event-Category": {
             "enum": [
-                "member"
+                "acdc_call_stat"
             ],
             "type": "string"
         },
         "Event-Name": {
             "enum": [
-                "connect_accepted"
+                "exited-position"
             ],
             "type": "string"
         },
-        "Old-Call-ID": {
+        "Exited-Position": {
             "type": "string"
         },
-        "Process-ID": {
+        "Queue-ID": {
             "type": "string"
         }
     },
     "required": [
-        "Call-ID"
+        "Account-ID",
+        "Call-ID",
+        "Queue-ID"
     ],
     "type": "object"
 }

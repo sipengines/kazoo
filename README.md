@@ -64,13 +64,13 @@
 Welcome to Kazoo, an ambitious project to bring cloud-based VoIP and telecommunications to everyone. Our goal is to provide the world with a free, open telecommunications software platform. Released under the [OSI-approved MPL 1.1 open source software license](https://opensource.org/licenses/MPL-1.1), we're building upon strong FOSS components like [GNU](https://www.gnu.org/)/[Linux](https://en.wikipedia.org/wiki/Linux), [Erlang](https://www.erlang.org/), [FreeSWITCH](https://freeswitch.org), [Apache CouchDB](https://couchdb.apache.org/), and [RabbitMQ](https://www.rabbitmq.com). Our project is a great example of the wonderful things that can happen when software is open.
 
 ### What is Kazoo?
-
+	
 Kazoo is an API-based platform that lets you use your existing phones,
 programming languages and IT skills to build voice, video and SMS services. We
 focus on building a simple, powerful communications platform and let you focus
 on marketing, servicing and integrating communications with your clients
 systems.
-
+	
 Dubbed a "scalable, distributed, cloud-based" telephony platform, Kazoo
 provides simple to use, consistent API so that people who know little about
 building telecom systems can still dive in and utilize the power of the phone
@@ -85,7 +85,7 @@ communications wasn't so complicated. So we abandoned the old infrastructure
 altogether and teamed up to build a new platform from the ground up that would
 take out all the complexity while giving the power of customization to you,
 the user.
-
+	
 Led by the founders of successful commercial and open-source telephony and
 networking projects, our carrier-grade software helps people create solid
 voice, video and SMS solutions that work. We provide you with the open-source
