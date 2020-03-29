@@ -353,9 +353,7 @@ handle_cast({'member_connect_win', RespJObj, QueueOpts}, #state{my_q=MyQ
                                                                ,queue_id=QueueId
                                                                }=State) ->
     lager:debug("agent process won the call, sending the win"),
-
     Call1 = apply_callback_details(Call, QueueOpts),
-
     send_member_connect_win(RespJObj, Call1, QueueId, MyQ, MyId, QueueOpts),
 
     {'noreply', State#state{call=Call1
@@ -613,15 +611,18 @@ send_member_connect_win(RespJObj, Call, QueueId, MyQ, MyId, QueueOpts) ->
 -spec send_member_connect_satisfied(kz_json:object(), kapps_call:call(), kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary(), kz_term:proplist()) -> 'ok'.
 send_member_connect_satisfied(RespJObj, Call, QueueId, MyQ, MyId, QueueOpts) ->
     CallJSON = kapps_call:to_json(Call),
-    Q = kz_json:get_value(<<"Server-ID">>, RespJObj),
+%%    Q = kz_json:get_value(<<"Server-ID">>, RespJObj),
     Satisfied = props:filter_undefined(
                   [{<<"Call">>, CallJSON}
                   ,{<<"Process-ID">>, MyId}
                   ,{<<"Agent-Process-IDs">>, kz_json:get_list_value(<<"Agent-Process-IDs">>, RespJObj)}
                   ,{<<"Queue-ID">>, QueueId}
+                  ,{<<"Agent-ID">>, kz_json:get_value(<<"Agent-ID">>, RespJObj)}
+                  ,{<<"Accept-Agent-ID">>, kz_json:get_value(<<"Accept-Agent-ID">>, RespJObj)}
                    | QueueOpts ++ kz_api:default_headers(MyQ, ?APP_NAME, ?APP_VERSION)
                   ]),
-    publish(Q, Satisfied, fun kapi_acdc_queue:publish_member_connect_satisfied/2).
+%%    publish(Q, Satisfied, fun kapi_acdc_queue:publish_member_connect_satisfied/2).
+    publish(Satisfied, fun kapi_acdc_queue:publish_member_connect_satisfied/1).
 
 -spec send_agent_timeout(kz_json:object(), kapps_call:call(), kz_term:ne_binary()) -> 'ok'.
 send_agent_timeout(RespJObj, Call, QueueId) ->

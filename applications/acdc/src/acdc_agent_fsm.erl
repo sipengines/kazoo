@@ -830,11 +830,12 @@ ringing({'member_connect_satisfied', JObj, Node}, #state{agent_listener=AgentLis
                                                           ,connect_failures=Fails
                                                           ,max_connect_failures=MaxFails
                                                           }=State) ->
-    lager:info("received connect_satisfied: check if I should hangup:~p  ~p", [Node, JObj]),
     CallId = kz_json:get_ne_binary_value([<<"Call">>, <<"Call-ID">>], JObj, []),
-    case CallId =:= MemberCallId of
+    AcceptedAgentId = kz_json:get_binary_value(<<"Accept-Agent-ID">>, JObj),
+    lager:info("received connect_satisfied: check if I should hangup:~p  MemberCall:~p CallId:~p AgentId:~p AcceptedAgentId:~p", [Node, MemberCallId, CallId, AgentId, AcceptedAgentId]),
+    case CallId =:= MemberCallId andalso AgentId /= AcceptedAgentId of
         true ->
-            lager:info("hanging up: someother agent replies"),
+            lager:info("Agent ~p hanging up: agent ~p is handling the call", [AgentId, AcceptedAgentId]),
             acdc_agent_listener:channel_hungup(AgentListener, MemberCallId),
             acdc_stats:call_missed(AccountId, QueueId, AgentId, MemberCallId, <<"LOSE_RACE">>),
             acdc_agent_listener:presence_update(AgentListener, ?PRESENCE_GREEN),
@@ -847,7 +848,6 @@ ringing({'member_connect_satisfied', JObj, Node}, #state{agent_listener=AgentLis
             end;
         _ -> {'next_state', 'ringing', State}
     end;
-
 ringing({'originate_uuid', ACallId, ACtrlQ}, #state{agent_listener=AgentListener}=State) ->
     lager:debug("recv originate_uuid for agent call ~s(~s)", [ACallId, ACtrlQ]),
     acdc_agent_listener:originate_uuid(AgentListener, ACallId, ACtrlQ),
@@ -1168,6 +1168,32 @@ ringing_callback({'shared_call_id', JObj}, #state{agent_listener=AgentListener}=
     {'next_state', 'ringing_callback', State#state{agent_call_id=ACallId
                                                   ,connect_failures=0
                                                   }};
+ringing_callback({'member_connect_satisfied', JObj, Node}, #state{agent_listener=AgentListener
+                                                          ,member_call_id=MemberCallId
+                                                          ,account_id=AccountId
+                                                          ,member_call_queue_id=QueueId
+                                                          ,agent_id=AgentId
+                                                          ,connect_failures=Fails
+                                                          ,max_connect_failures=MaxFails
+                                                          }=State) ->
+    CallId = kz_json:get_ne_binary_value([<<"Call">>, <<"Call-ID">>], JObj, []),
+    AcceptedAgentId = kz_json:get_binary_value(<<"Accept-Agent-ID">>, JObj),
+    lager:info("received connect_satisfied: check if I should hangup:~p  MemberCall:~p CallId:~p AgentId:~p AcceptedAgentId:~p", [Node, MemberCallId, CallId, AgentId, AcceptedAgentId]),
+    case CallId =:= MemberCallId andalso AgentId /= AcceptedAgentId of
+        true ->
+            lager:info("Agent ~p hanging up: agent ~p is handling the call", [AgentId, AcceptedAgentId]),
+            acdc_agent_listener:channel_hungup(AgentListener, MemberCallId),
+            acdc_stats:call_missed(AccountId, QueueId, AgentId, MemberCallId, <<"LOSE_RACE">>),
+            acdc_agent_listener:presence_update(AgentListener, ?PRESENCE_GREEN),
+
+            State1 = clear_call(State, 'failed'),
+            StateName1 = return_to_state(Fails+1, MaxFails),
+            case StateName1 of
+                'paused' -> {'next_state', 'paused', State1};
+                'ready' -> apply_state_updates(State1)
+            end;
+        _ -> {'next_state', 'ringing_callback', State}
+    end;
 ringing_callback({'channel_answered', JObj}, State) ->
     CallId = call_id(JObj),
     lager:debug("agent answered phone on ~s", [CallId]),

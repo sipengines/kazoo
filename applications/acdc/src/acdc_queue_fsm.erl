@@ -472,7 +472,7 @@ connecting({'member_call_cancel', JObj}, #state{queue_proc=Srv
                                                ,account_id=AccountId
                                                ,queue_id=QueueId
                                                ,member_call=Call
-                                               ,member_call_winners=[Winner|_]
+                                               ,member_call_winners=Winners
                                                ,caller_exit_key=DTMF
                                                }=State) ->
     CallId = kapps_call:call_id(Call),
@@ -483,7 +483,11 @@ connecting({'member_call_cancel', JObj}, #state{queue_proc=Srv
 
             webseq:evt(?WSD_ID, self(), CallId, <<"member call finish - DTMF">>),
 
-            acdc_queue_listener:timeout_agent(Srv, Winner),
+            lists:foreach(fun(Winner) ->
+                lager:debug("sending timeout agent  to ~s(~s)", [kz_json:get_value(<<"Agent-ID">>, Winner) ,kz_json:get_value(<<"Process-ID">>, Winner) ]),
+                acdc_queue_listener:timeout_agent(Srv, Winner)
+                end,
+                Winners),
             acdc_queue_listener:exit_member_call(Srv),
             acdc_stats:call_abandoned(AccountId, QueueId, CallId, ?ABANDON_EXIT),
             {'next_state', 'ready', clear_member_call(State), 'hibernate'};
@@ -500,13 +504,15 @@ connecting({'accepted', AcceptJObj}, #state{queue_proc=Srv
                                            ,account_id=AccountId
                                            ,queue_id=QueueId
                                            }=State) ->
+    AcceptAgentID = kz_json:get_value(<<"Agent-ID">>, AcceptJObj),
     case accept_is_for_call(AcceptJObj, Call) of
         'true' ->
             lager:debug("recv acceptance from agent"),
             CallId = kapps_call:call_id(Call),
             webseq:evt(?WSD_ID, self(), CallId, <<"member call - agent acceptance">>),
 
-            lists:foreach(fun(Win) -> acdc_queue_listener:member_connect_satisfied(Srv, Win, []) end, Wins),
+            lists:foreach(fun(Win) -> acdc_queue_listener:member_connect_satisfied(Srv, kz_json:set_value(<<"Accept-Agent-ID">>, AcceptAgentID, Win), []) end, Wins),
+%%            lists:foreach(fun(Win) -> acdc_queue_listener:member_connect_satisfied(Srv, Win, []) end, Wins),
 
             acdc_queue_listener:finish_member_call(Srv, AcceptJObj),
             case kz_json:get_value(<<"Old-Call-ID">>, AcceptJObj) of
@@ -524,60 +530,70 @@ connecting({'accepted', AcceptJObj}, #state{queue_proc=Srv
             {'next_state', 'connecting', State}
     end;
 
-connecting({'callback_accepted', AcceptJObj}, #state{agent_ring_timer_ref=AgentRef
+connecting({'callback_accepted', AcceptJObj}, #state{queue_proc=Srv
+                                                    ,connect_wins=Wins
+                                                    ,agent_ring_timer_ref=AgentRef
                                                     ,member_call=Call
                                                     }=State) ->
+    AcceptAgentID = kz_json:get_value(<<"Agent-ID">>, AcceptJObj),
     case accept_is_for_call(AcceptJObj, Call) of
         'true' ->
             lager:debug("recv acceptance from agent, agent is calling back member"),
             CallId = kapps_call:call_id(Call),
             webseq:evt(?WSD_ID, self(), CallId, <<"member call - agent callback acceptance">>),
 
+            lists:foreach(fun(Win) -> acdc_queue_listener:member_connect_satisfied(Srv, kz_json:set_value(<<"Accept-Agent-ID">>, AcceptAgentID, Win), []) end, Wins),
+
             %% Do not send timeout to the agent once they've picked up the
             %% initiating call of the callback
             maybe_stop_timer(AgentRef),
-            {'next_state', 'connecting', State#state{agent_ring_timer_ref='undefined'}}
+            {'next_state', 'connecting', State#state{agent_ring_timer_ref='undefined'}};
+        'false' ->
+            lager:debug("ignoring callback_accepted message"),
+            {'next_state', 'connecting', State}
     end;
 
 connecting({'retry', RetryJObj}, #state{agent_ring_timer_ref=AgentRef
                                        ,collect_ref=CollectRef
-                                       ,member_call_winners=[Winner|_]
+                                       ,member_call_winners=Winners
                                        }=State) ->
     RetryProcId = kz_json:get_value(<<"Process-ID">>, RetryJObj),
     RetryAgentId = kz_json:get_value(<<"Agent-ID">>, RetryJObj),
 
-    case {kz_json:get_value(<<"Agent-ID">>, Winner), kz_json:get_value(<<"Process-ID">>, Winner)} of
-        {RetryAgentId, RetryProcId} ->
-            lager:debug("recv retry from our winning agent ~s(~s)", [RetryAgentId, RetryProcId]),
+    NewWinners = 
+    lists:filter(fun(Winner) ->
+                RetryAgentId =/= kz_json:get_value(<<"Agent-ID">>, Winner) andalso RetryProcId =/=  kz_json:get_value(<<"Process-ID">>, Winner)
+                end,
+                Winners),
 
+    case NewWinners of
+        [] ->
+            lager:debug("recv retry from all of our winning agents"),
             gen_fsm:send_event(self(), {'timeout', 'undefined', ?COLLECT_RESP_MESSAGE}),
-
             maybe_stop_timer(CollectRef),
             maybe_stop_timer(AgentRef),
-
             webseq:evt(?WSD_ID, webseq:process_pid(RetryJObj), self(), <<"member call - retry">>),
-
             {'next_state', 'connect_req', State#state{agent_ring_timer_ref='undefined'
                                                      ,member_call_winners='undefined'
                                                      ,collect_ref='undefined'
                                                      }};
-        {RetryAgentId, _OtherProcId} ->
-            lager:debug("recv retry from monitoring proc ~s(~s)", [RetryAgentId, RetryProcId]),
-            {'next_state', 'connecting', State};
-        {_OtherAgentId, _OtherProcId} ->
-            lager:debug("recv retry from unknown agent ~s(~s)", [RetryAgentId, RetryProcId]),
-            {'next_state', 'connecting', State}
+        _ ->
+            lager:debug("recv retry from agent ~s(~s), removing from Winnners", [RetryAgentId, RetryProcId]),
+            {'next_state', 'connecting', State#state{member_call_winners=NewWinners}}
     end;
 connecting({'timeout', AgentRef, ?AGENT_RING_TIMEOUT_MESSAGE}, #state{agent_ring_timer_ref=AgentRef
-                                                                     ,member_call_winners=[Winner|_]
+                                                                     ,member_call_winners=Winners
                                                                      ,queue_proc=Srv
                                                                      }=State) ->
     lager:debug("timed out waiting for agent to pick up"),
     lager:debug("let's try another agent"),
     gen_fsm:send_event(self(), {'timeout', 'undefined', ?COLLECT_RESP_MESSAGE}),
 
-    acdc_queue_listener:timeout_agent(Srv, Winner),
-
+    lists:foreach(fun(Winner) ->
+        lager:debug("sending timeout agent  to ~s(~s)", [kz_json:get_value(<<"Agent-ID">>, Winner) ,kz_json:get_value(<<"Process-ID">>, Winner) ]),
+        acdc_queue_listener:timeout_agent(Srv, Winner)
+        end,
+        Winners),
     {'next_state', 'connect_req', State#state{agent_ring_timer_ref='undefined'
                                              ,member_call_winners='undefined'
                                              }};
@@ -615,22 +631,25 @@ connecting({'timeout', ConnRef, ?CONNECTION_TIMEOUT_MESSAGE}, #state{queue_proc=
                                                                     ,account_id=AccountId
                                                                     ,queue_id=QueueId
                                                                     ,member_call=Call
-                                                                    ,member_call_winners=[Winner|_]
+                                                                    ,member_call_winners=Winners
                                                                     }=State) ->
     lager:debug("connection timeout occurred, bounce the caller out of the queue"),
 
-    maybe_timeout_winner(Srv, Winner),
+    lists:foreach(fun(Winner) ->
+        lager:debug("maybe sending timeout agent  to ~s(~s)", [kz_json:get_value(<<"Agent-ID">>, Winner) ,kz_json:get_value(<<"Process-ID">>, Winner) ]),
+        maybe_timeout_winner(Srv, Winner)
+        end,
+        Winners),
+
     CallId = kapps_call:call_id(Call),
     acdc_stats:call_abandoned(AccountId, QueueId, CallId, ?ABANDON_TIMEOUT),
-
     webseq:evt(?WSD_ID, self(), CallId, <<"member call finish - timeout">>),
-
     {'next_state', 'ready', clear_member_call(State), 'hibernate'};
 
 connecting({'register_callback', JObj}, #state{queue_proc=Srv
                                               ,connection_timer_ref=ConnRef
                                               ,agent_ring_timer_ref=AgentRef
-                                              ,member_call_winners=[Winner|_]
+                                              ,member_call_winners=Winners
                                               }=State) ->
     lager:debug("register_callback recv'd for ~s while connecting", [kz_json:get_value(<<"Call-ID">>, JObj)]),
     %% disable queue timeout for callback
@@ -638,7 +657,12 @@ connecting({'register_callback', JObj}, #state{queue_proc=Srv
     %% cancel agent ringing and do re_req
     gen_fsm:send_event(self(), {'timeout', 'undefined', ?COLLECT_RESP_MESSAGE}),
     maybe_stop_timer(AgentRef),
-    acdc_queue_listener:timeout_agent(Srv, Winner),
+    lists:foreach(fun(Winner) ->
+        lager:debug("sending timeout agent  to ~s(~s)", [kz_json:get_value(<<"Agent-ID">>, Winner) ,kz_json:get_value(<<"Process-ID">>, Winner) ]),
+        acdc_queue_listener:timeout_agent(Srv, Winner)
+        end,
+        Winners),
+
     {'next_state', 'connect_req', State#state{connection_timer_ref='undefined'
                                              ,agent_ring_timer_ref='undefined'
                                              ,member_call_winners='undefined'

@@ -129,7 +129,7 @@
 -define(BINDINGS(AcctId, AgentId), [{'self', []}
                                    ,{'acdc_agent', [{'account_id', AcctId}
                                                    ,{'agent_id', AgentId}
-                                                   ,{'restrict_to', ['member_connect_win', 'sync', 'fsm_shared']}
+                                                   ,{'restrict_to', ['member_connect_win', 'member_connect_satisfied', 'sync', 'fsm_shared']}
                                                    ]}
                                    ,{'conf', [{'action', <<"*">>}
                                              ,{'db', kz_util:format_account_id(AcctId, 'encoded')}
@@ -842,16 +842,20 @@ handle_cast({'monitor_connect_accepted', ACallId}, #state{agent_call_ids=ACallId
 
 handle_cast({'member_callback_accepted', ACall}, #state{msg_queue_id=AmqpQueue
                                                        ,call=Call
+                                                       ,acct_id=AcctId
+                                                       ,agent_id=AgentId
+                                                       ,my_id=MyId
                                                        ,agent_call_ids=ACallIds
                                                        }=State) ->
     lager:debug("agent answered callback, mark call as accepted"),
 
     ACallId = kapps_call:call_id(ACall),
-    ACallIds1 = filter_agent_calls(ACallIds, ACallId),
+%%    ACallIds1 = filter_agent_calls(ACallIds, ACallId),
+      ACallIds1 = [ACallId],
 
     lager:debug("new agent call ids: ~p", [ACallIds1]),
 
-    send_member_callback_accepted(AmqpQueue, call_id(Call)),
+    send_member_callback_accepted(AmqpQueue, call_id(Call), AcctId, AgentId, MyId),
 
     ACall1 = kapps_call:set_control_queue(props:get_value(ACallId, ACallIds), ACall),
     kapps_call_command:prompt(<<"queue-now_calling_back">>, ACall1),
@@ -1174,9 +1178,12 @@ send_member_connect_accepted(Queue, CallId, NewCallId, AcctId, AgentId, MyId) ->
                                   ]),
     kapi_acdc_queue:publish_member_connect_accepted(Queue, Resp).
 
--spec send_member_callback_accepted(kz_term:ne_binary(), kz_term:ne_binary()) -> 'ok'.
-send_member_callback_accepted(Queue, CallId) ->
+-spec send_member_callback_accepted(kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary()) -> 'ok'.
+send_member_callback_accepted(Queue, CallId, AcctId, AgentId, MyId) ->
     Resp = props:filter_undefined([{<<"Call-ID">>, CallId}
+                                  ,{<<"Account-ID">>, AcctId}
+                                  ,{<<"Agent-ID">>, AgentId}
+                                  ,{<<"Process-ID">>, MyId}
                                    | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
                                   ]),
     kapi_acdc_queue:publish_member_callback_accepted(Queue, Resp).

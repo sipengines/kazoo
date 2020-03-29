@@ -489,6 +489,19 @@ shared_call_id_v(Prop) when is_list(Prop) ->
 shared_call_id_v(JObj) -> shared_call_id_v(kz_json:to_proplist(JObj)).
 
 %%------------------------------------------------------------------------------
+%% Shared routing key for member_connect_satisfied
+%%------------------------------------------------------------------------------
+-spec member_connect_satisfied_routing_key(kz_term:api_terms() | kz_term:ne_binary()) -> kz_term:ne_binary().
+member_connect_satisfied_routing_key(Props) when is_list(Props) ->
+    AgentId = props:get_value(<<"Agent-ID">>, Props),
+    member_connect_satisfied_routing_key(AgentId);
+member_connect_satisfied_routing_key(AgentId) when is_binary(AgentId) ->
+    <<"acdc.member.connect_satisfied.", AgentId/binary>>;
+member_connect_satisfied_routing_key(JObj) ->
+    AgentId = kz_json:get_value(<<"Agent-ID">>, JObj),
+    member_connect_satisfied_routing_key(AgentId).
+
+%%------------------------------------------------------------------------------
 %% Shared routing key for member_connect_win
 %%------------------------------------------------------------------------------
 -spec member_connect_win_routing_key(kz_term:api_terms() | kz_term:ne_binary()) -> kz_term:ne_binary().
@@ -522,6 +535,9 @@ bind_q(Q, {AcctId, AgentId, _, Status}, 'undefined') ->
     kz_amqp_util:bind_q_to_kapps(Q, stats_req_routing_key(AcctId, AgentId));
 bind_q(Q, {_, AgentId, _, _}=Ids, ['member_connect_win'|T]) ->
     kz_amqp_util:bind_q_to_callmgr(Q, member_connect_win_routing_key(AgentId)),
+    bind_q(Q, Ids, T);
+bind_q(Q, {_, AgentId, _, _}=Ids, ['member_connect_satisfied'|T]) ->
+    kz_amqp_util:bind_q_to_callmgr(Q, member_connect_satisfied_routing_key(AgentId)),
     bind_q(Q, Ids, T);
 bind_q(Q, {AcctId, AgentId, _, Status}=Ids, ['status'|T]) ->
     kz_amqp_util:bind_q_to_kapps(Q, agent_status_routing_key(AcctId, AgentId, Status)),
@@ -561,6 +577,9 @@ unbind_q(Q, {AcctId, AgentId, _, Status}, 'undefined') ->
     kz_amqp_util:unbind_q_from_kapps(Q, stats_req_routing_key(AcctId));
 unbind_q(Q, {_, AgentId, _, _}=Ids, ['member_connect_win'|T]) ->
     kz_amqp_util:unbind_q_from_callmgr(Q, member_connect_win_routing_key(AgentId)),
+    unbind_q(Q, Ids, T);
+unbind_q(Q, {_, AgentId, _, _}=Ids, ['member_connect_satisfied'|T]) ->
+    kz_amqp_util:unbind_q_from_callmgr(Q, member_connect_satisfied_routing_key(AgentId)),
     unbind_q(Q, Ids, T);
 unbind_q(Q, {AcctId, AgentId, _, Status}=Ids, ['status'|T]) ->
     _ = kz_amqp_util:unbind_q_from_kapps(Q, agent_status_routing_key(AcctId, AgentId, Status)),

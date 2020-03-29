@@ -53,7 +53,7 @@
         ,publish_member_connect_req/1, publish_member_connect_req/2
         ,publish_member_connect_resp/2, publish_member_connect_resp/3
         ,publish_member_connect_win/1, publish_member_connect_win/2
-        ,publish_member_connect_satisfied/2, publish_member_connect_satisfied/3
+        ,publish_member_connect_satisfied/1, publish_member_connect_satisfied/2
         ,publish_agent_timeout/2, publish_agent_timeout/3
         ,publish_member_connect_retry/2, publish_member_connect_retry/3
         ,publish_member_connect_accepted/2, publish_member_connect_accepted/3
@@ -292,7 +292,7 @@ member_connect_resp_v(JObj) ->
                                              ,<<"Wrapup-Timeout">>, <<"CDR-Url">>
                                              ,<<"Process-ID">>, <<"Agent-Process-IDs">>
                                              ,<<"Record-Caller">>, <<"Recording-URL">>
-                                             ,<<"Notifications">>
+                                             ,<<"Notifications">>, <<"Callback-Details">>
                                              ]).
 -define(MEMBER_CONNECT_WIN_VALUES, [{<<"Event-Category">>, <<"member">>}
                                    ,{<<"Event-Name">>, <<"connect_win">>}
@@ -329,7 +329,7 @@ member_connect_win_routing_key(JObj) ->
 %%------------------------------------------------------------------------------
 %% Member Connect Satisfied
 %%------------------------------------------------------------------------------
--define(MEMBER_CONNECT_SATISFIED_HEADERS, [<<"Queue-ID">>, <<"Call">>]).
+-define(MEMBER_CONNECT_SATISFIED_HEADERS, [<<"Queue-ID">>, <<"Call">>, <<"Agent-ID">>, <<"Accept-Agent-ID">>]).
 -define(OPTIONAL_MEMBER_CONNECT_SATISFIED_HEADERS, [<<"Process-ID">>, <<"Agent-Process-IDs">>]).
 -define(MEMBER_CONNECT_SATISFIED_VALUES, [{<<"Event-Category">>, <<"member">>}
                                          ,{<<"Event-Name">>, <<"connect_satisfied">>}
@@ -352,6 +352,16 @@ member_connect_satisfied_v(Prop) when is_list(Prop) ->
     kz_api:validate(Prop, ?MEMBER_CONNECT_SATISFIED_HEADERS, ?MEMBER_CONNECT_SATISFIED_VALUES, ?MEMBER_CONNECT_SATISFIED_TYPES);
 member_connect_satisfied_v(JObj) ->
     member_connect_satisfied_v(kz_json:to_proplist(JObj)).
+
+-spec member_connect_satisfied_routing_key(kz_term:api_terms() | kz_term:ne_binary()) -> kz_term:ne_binary().
+member_connect_satisfied_routing_key(Props) when is_list(Props) ->
+    AgentId = props:get_value(<<"Agent-ID">>, Props),
+    member_connect_satisfied_routing_key(AgentId);
+member_connect_satisfied_routing_key(AgentId) when is_binary(AgentId) ->
+    <<"acdc.member.connect_satisfied.", AgentId/binary>>;
+member_connect_satisfied_routing_key(JObj) ->
+    AgentId = kz_json:get_value(<<"Agent-ID">>, JObj),
+    member_connect_satisfied_routing_key(AgentId).
 
 %%------------------------------------------------------------------------------
 %% Agent Timeout
@@ -409,7 +419,7 @@ member_connect_accepted_v(JObj) ->
 %%------------------------------------------------------------------------------
 %% Member Call Back Accepted
 %%------------------------------------------------------------------------------
--define(MEMBER_CALLBACK_ACCEPTED_HEADERS, [<<"Call-ID">>]).
+-define(MEMBER_CALLBACK_ACCEPTED_HEADERS, [<<"Account-ID">>, <<"Agent-ID">>, <<"Process-ID">>, <<"Call-ID">>]).
 -define(OPTIONAL_MEMBER_CALLBACK_ACCEPTED_HEADERS, []).
 -define(MEMBER_CALLBACK_ACCEPTED_VALUES, [{<<"Event-Category">>, <<"member">>}
                                          ,{<<"Event-Name">>, <<"callback_accepted">>}
@@ -1011,14 +1021,14 @@ publish_member_connect_win(API, ContentType) ->
     {'ok', Payload} = kz_api:prepare_api_payload(API, ?MEMBER_CONNECT_WIN_VALUES, fun member_connect_win/1),
     kz_amqp_util:callmgr_publish(Payload, ContentType, member_connect_win_routing_key(API)).
 
--spec publish_member_connect_satisfied(kz_term:ne_binary(), kz_term:api_terms()) -> 'ok'.
-publish_member_connect_satisfied(Q, JObj) ->
-    publish_member_connect_satisfied(Q, JObj, ?DEFAULT_CONTENT_TYPE).
+-spec publish_member_connect_satisfied(kz_term:api_terms()) -> 'ok'.
+publish_member_connect_satisfied(JObj) ->
+    publish_member_connect_satisfied(JObj, ?DEFAULT_CONTENT_TYPE).
 
--spec publish_member_connect_satisfied(kz_term:ne_binary(), kz_term:api_terms(), kz_term:ne_binary()) -> 'ok'.
-publish_member_connect_satisfied(Q, API, ContentType) ->
+-spec publish_member_connect_satisfied(kz_term:api_terms(), kz_term:ne_binary()) -> 'ok'.
+publish_member_connect_satisfied(API, ContentType) ->
     {'ok', Payload} = kz_api:prepare_api_payload(API, ?MEMBER_CONNECT_SATISFIED_VALUES, fun member_connect_satisfied/1),
-    kz_amqp_util:targeted_publish(Q, Payload, ContentType).
+    kz_amqp_util:callmgr_publish(Payload, ContentType, member_connect_satisfied_routing_key(API)).
 
 -spec publish_agent_timeout(kz_term:ne_binary(), kz_term:api_terms()) -> 'ok'.
 -spec publish_agent_timeout(kz_term:ne_binary(), kz_term:api_terms(), kz_term:ne_binary()) -> 'ok'.
