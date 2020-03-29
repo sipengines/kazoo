@@ -8,8 +8,6 @@
 %%%-------------------------------------------------------------------
 -module(acdc_stats_util).
 
--compile(export_all).
-
 -export([wait_time/2
         ,pause_time/2
         ,caller_id_name/2
