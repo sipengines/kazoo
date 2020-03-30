@@ -137,6 +137,8 @@ allowed_methods(_QueueId) ->
 
 allowed_methods(_QueueId, ?ROSTER_PATH_TOKEN) ->
     [?HTTP_GET, ?HTTP_POST, ?HTTP_DELETE];
+allowed_methods(_QueueId, ?STATS_SUMMARY_PATH_TOKEN) ->
+    [?HTTP_GET];
 allowed_methods(_QueueId, ?EAVESDROP_PATH_TOKEN) ->
     [?HTTP_PUT].
 
@@ -157,6 +159,7 @@ resource_exists() -> 'true'.
 resource_exists(_) -> 'true'.
 
 resource_exists(_, ?ROSTER_PATH_TOKEN) -> 'true';
+resource_exists(_, ?STATS_SUMMARY_PATH_TOKEN) -> 'true';
 resource_exists(_, ?EAVESDROP_PATH_TOKEN) -> 'true'.
 
 %%--------------------------------------------------------------------
@@ -206,7 +209,7 @@ validate(Context, PathToken) ->
 validate_queue(Context, ?STATS_PATH_TOKEN, ?HTTP_GET) ->
     fetch_all_queue_stats(Context);
 validate_queue(Context, ?STATS_SUMMARY_PATH_TOKEN, ?HTTP_GET) ->
-    fetch_stats_summary(Context);
+    fetch_stats_summary(Context, 'all');
 validate_queue(Context, ?EAVESDROP_PATH_TOKEN, ?HTTP_PUT) ->
     validate_eavesdrop_on_call(Context);
 validate_queue(Context, Id, ?HTTP_GET) ->
@@ -223,6 +226,8 @@ validate(Context, Id, Token) ->
 
 validate_queue_operation(Context, Id, ?ROSTER_PATH_TOKEN, ?HTTP_GET) ->
     load_agent_roster(Id, Context);
+validate_queue_operation(Context, Id, ?STATS_SUMMARY_PATH_TOKEN, ?HTTP_GET) ->
+    fetch_stats_summary(Context, Id);
 validate_queue_operation(Context, Id, ?ROSTER_PATH_TOKEN, ?HTTP_POST) ->
     add_queue_to_agents(Id, Context);
 validate_queue_operation(Context, Id, ?ROSTER_PATH_TOKEN, ?HTTP_DELETE) ->
@@ -680,19 +685,22 @@ fetch_all_queue_stats(Context) ->
         StartRange -> fetch_ranged_queue_stats(Context, StartRange)
     end.
 
--spec fetch_stats_summary(cb_context:context()) -> cb_context:context().
-fetch_stats_summary(Context) ->
+-spec fetch_stats_summary(cb_context:context(), kz_term:ne_binary()|'all') -> cb_context:context().
+fetch_stats_summary(Context, QueueId) ->
     case cb_context:req_value(Context, <<"start_range">>) of
-        'undefined' -> fetch_current_stats_summary(Context);
-        StartRange -> fetch_ranged_stats_summary(Context, StartRange)
+        'undefined' -> fetch_current_stats_summary(Context, QueueId);
+        StartRange -> fetch_ranged_stats_summary(Context, StartRange, QueueId)
     end.
 
--spec fetch_current_stats_summary(cb_context:context()) -> cb_context:context().
-fetch_current_stats_summary(Context) ->
+-spec fetch_current_stats_summary(cb_context:context(), kz_term:ne_binary() | 'all') -> cb_context:context().
+fetch_current_stats_summary(Context, QueueId) ->
     Req = props:filter_undefined(
             [{<<"Account-ID">>, cb_context:account_id(Context)}
             ,{<<"Status">>, cb_context:req_value(Context, <<"status">>)}
-            ,{<<"Queue-ID">>, cb_context:req_value(Context, <<"queue_id">>)}
+            ,{<<"Queue-ID">>, case QueueId of
+                                  'all' -> cb_context:req_value(Context, <<"queue_id">>);
+                                  Else -> Else
+                              end}
              | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
             ]),
     case kz_amqp_worker:call(Req
@@ -715,7 +723,7 @@ fetch_current_stats_summary(Context) ->
     end.
 
 
-fetch_ranged_stats_summary(Context, StartRange) ->
+fetch_ranged_stats_summary(Context, StartRange, QueueId) ->
     MaxRange = 2682000 * 12,
 
     Now = kz_time:current_tstamp(),
@@ -736,14 +744,17 @@ fetch_ranged_stats_summary(Context, StartRange) ->
             JObj = kz_json:from_list([{<<"message">>, Msg}, {<<"cause">>, StartRange}]),
             cb_context:add_validation_error(<<"end_range">>, <<"date_range">>, JObj, Context);               
         F ->
-            fetch_ranged_stats_summary(Context, F, To)
+            fetch_ranged_stats_summary(Context, F, To, QueueId)
     end.
 
-fetch_ranged_stats_summary(Context, From, To) ->
+fetch_ranged_stats_summary(Context, From, To, QueueId) ->
     Req = props:filter_undefined(
             [{<<"Account-ID">>, cb_context:account_id(Context)}
             ,{<<"Status">>, cb_context:req_value(Context, <<"status">>)}
-            ,{<<"Queue-ID">>, cb_context:req_value(Context, <<"queue_id">>)}
+            ,{<<"Queue-ID">>, case QueueId of
+                                  'all' -> cb_context:req_value(Context, <<"queue_id">>);
+                                  Else -> Else
+                              end}
             ,{<<"Start-Range">>, From}
             ,{<<"End-Range">>, To}
              | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
