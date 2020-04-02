@@ -32,6 +32,7 @@
                   ,{'self', []}
                   ,{'conf', [{'doc_type', <<"queue">>}
                             ,{'action', <<"created">>}
+                            ,'federate'
                             ]}
                   ]).
 -define(RESPONDERS, [
