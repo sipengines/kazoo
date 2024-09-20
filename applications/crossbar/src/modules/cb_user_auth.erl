@@ -113,7 +113,6 @@ authorize_nouns(Context
 	orelse
 	 (
 		kz_json:get_value(<<"method">>, cb_context:auth_doc(Context)) == <<"cb_api_auth">>
-                andalso AuthAccountId =/= AccountId
                 andalso kz_services_reseller:is_reseller(AuthAccountId)
 		andalso account_is_descendant(AuthAccountId, AccountId)
 	 )
