@@ -97,6 +97,7 @@
 
 -define(RESOURCE_TYPE_AUDIO, <<"audio">>).
 
+-define(NO_ENDPOINTS_PAUSE_TIME, kapps_config:get_integer(?CONFIG_CAT, <<"no_endpoints_pause_time">>, 15)).
 -define(NO_ENDPOINTS_PAUSE_MSG, <<"no device registered">>).
 
 -record(state, {account_id :: kz_term:ne_binary()
@@ -628,7 +629,7 @@ ready('cast', {'member_connect_win', JObj, 'same_node'}, #state{agent_listener=A
     case get_endpoints(OrigEPs, Call, AgentId, QueueId) of
         {'error', 'no_endpoints'} ->
             lager:info("agent ~s has no endpoints; pausing agent", [AgentId]),
-            pause(self(), 15, ?NO_ENDPOINTS_PAUSE_MSG),
+            pause(self(), ?NO_ENDPOINTS_PAUSE_TIME, ?NO_ENDPOINTS_PAUSE_MSG),
             acdc_agent_listener:member_connect_retry(AgentListener, JObj),
             {'next_state', 'paused', State};
         {'error', _E} ->
@@ -2682,7 +2683,7 @@ apply_state_updates_fold({Next, StateData, #state{account_id=AccountId
             acdc_agent_stats:agent_ready(AccountId, AgentId);
         'not_ready' ->
             acdc_agent_listener:send_agent_busy(AgentListener),
-            pause(self(), 15, ?NO_ENDPOINTS_PAUSE_MSG);
+            pause(self(), ?NO_ENDPOINTS_PAUSE_TIME, ?NO_ENDPOINTS_PAUSE_MSG);
         'paused' ->
             acdc_agent_listener:send_agent_busy(AgentListener),
             acdc_agent_stats:agent_paused(AccountId, AgentId, time_left(PRef), Alias);
