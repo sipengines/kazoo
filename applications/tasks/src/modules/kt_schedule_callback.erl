@@ -44,7 +44,7 @@ maybe_schedule_callback(AccountId, _AccountJObj) ->
                                                          end,
                                                         JObjs));
         {'error', _E} ->
-            lager:warning("failed to load listing_by_scheduleview: ~p", [_E])
+            lager:warning("account: ~s failed to load view vmboxes/listing_by_schedule : ~p", [AccountId, _E])
     end,
     'ok'.
 

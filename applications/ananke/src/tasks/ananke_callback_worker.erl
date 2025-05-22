@@ -25,6 +25,8 @@
 
 -define(SERVER, ?MODULE).
 
+-define(PRESS_ANY_KEY_PROMPT, kapps_config:get(?CONFIG_CAT, <<"press_any_key_prompt">>, <<"agent-logged_out">>)).
+
 -record(state, {
                args             :: args()
                ,callbacks        :: callbacks()
@@ -90,18 +92,14 @@ handle_cast({'gen_listener', {'created_queue', QueueName}}, State) ->
     {'noreply', State#state{my_q = QueueName}};
 handle_cast({'gen_listener', {'is_consuming', _IsConsuming}}, State) ->
     {'noreply', State};
-handle_cast({'ananke_call_play_msg', _JObj}, #state{args = Args
-                                                    ,call = Call
+handle_cast({'ananke_call_play_msg', _JObj}, #state{call = Call
                                                    } = State) ->
-    AccountId = Args#args.account_id,
-    MediaId = Args#args.media_id,
-    Media =  kz_media_util:media_path(MediaId, AccountId),
-    kapps_call_command:play_and_collect_digit(Media, Call),
+    kapps_call_command:prompt_and_collect_digit(?PRESS_ANY_KEY_PROMPT, Call),
     {'noreply', maybe_set_confirm_timer(State)};
 handle_cast({'ananke_call_confirmed', _JObj}, #state{args = Args, confirm_timer = Timer, call = Call} = State) ->
     stop_confirm_timer(Timer),
     kapps_call_command:blind_transfer(Args#args.vm_number, Call),
-    {'noreply', State#state{confirmed = true}};
+    {'noreply', State#state{confirm_timer = 'undefined', confirmed = true}};
 handle_cast({'ananke_originate_uuid', JObj}, #state{call = Call} = State) ->
     CtrlQ = kz_json:get_value(<<"Outbound-Call-Control-Queue">>, JObj),
     CallId = kz_json:get_value(<<"Outbound-Call-ID">>, JObj),
@@ -129,7 +127,7 @@ handle_info({'originate', #callback{callback_number = Number, call_timeout = Tim
 handle_info('confirm_timeout', #state{call_id = CallId, call = Call} = State) ->
     lager:info("confirm timeout, hangup ~s and continue", [CallId]),
     kapps_call_command:hangup(Call),
-    {'noreply', State};
+    {'noreply', State#state{confirm_timer = 'undefined'}};
 handle_info(_Info, State) ->
     lager:info("unhandled message: ~p", [_Info]),
     {'noreply', State}.

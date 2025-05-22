@@ -18,7 +18,6 @@
               ,vm_box_id             :: kz_term:api_binary()
               ,vm_number             :: kz_term:api_binary()
               ,realm                 :: kz_term:api_binary()
-              ,media_id		     :: kz_term:api_binary()
               ,callbacks             :: callbacks()
               }).
 

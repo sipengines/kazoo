@@ -49,15 +49,39 @@ handle_req(JObj, Props) ->
     lager:debug("handling new voicemail in ~s", [VMBoxId]),
     {'ok', VMBoxJObj} = kz_datamgr:open_cache_doc(AccountDb, VMBoxId),
     case kzd_voicemail_box:owner_id(VMBoxJObj) of
-        'undefined' -> lager:debug("no owner");
+        'undefined' ->
+            lager:debug("account ~s mailbox ~s has no owner", [AccountId, VMBoxId]),
+            OptionsPath = [<<"notify">>, <<"callback">>],
+            VMBoxNotifyList = kz_json:get_value(OptionsPath, VMBoxJObj, []),
+
+            {'ok', AccountDoc} = kzd_accounts:fetch(AccountId),
+            Realm = kzd_accounts:realm(AccountDoc),
+
+            Mailbox = kz_json:get_value(<<"mailbox">>, VMBoxJObj),
+            VMNumber = get_voicemail_number(AccountDb, Mailbox),
+
+            Callbacks = lists:map(fun(VMBoxNotifyJObj) ->
+                          #callback{
+                                    callback_number = kz_json:get_value(<<"number">>, VMBoxNotifyJObj)
+                                    ,is_callback_disabled = kz_json:get_boolean_value(<<"disabled">>, VMBoxNotifyJObj)
+                                    ,call_timeout = get_callback_timeout(VMBoxNotifyJObj)
+                                    ,schedule = get_schedule(VMBoxNotifyJObj)
+                                   }
+                          end,
+                          VMBoxNotifyList),
+
+            StartArgs = #args{account_id = AccountId
+                             ,vm_box_id = VMBoxId
+                             ,vm_number = VMNumber
+                             ,realm = Realm
+                             ,callbacks = Callbacks
+                             },
+            maybe_start_caller(StartArgs);
         UserId ->
             lager:debug("voicemail owner is ~s", [UserId]),
 
             OptionsPath = [<<"notify">>, <<"callback">>],
             VMBoxNotifyList = kz_json:get_value(OptionsPath, VMBoxJObj, []),
-
-            MediaPath = [<<"notify">>, <<"media">>],
-            MediaId = kz_json:get_value(MediaPath, VMBoxJObj),
 
             {'ok', AccountDoc} = kzd_accounts:fetch(AccountId),
             Realm = kzd_accounts:realm(AccountDoc),
@@ -80,7 +104,6 @@ handle_req(JObj, Props) ->
                              ,vm_box_id = VMBoxId
                              ,vm_number = VMNumber
                              ,realm = Realm
-                             ,media_id = MediaId
                              ,callbacks = Callbacks
                              },
             maybe_start_caller(StartArgs)
