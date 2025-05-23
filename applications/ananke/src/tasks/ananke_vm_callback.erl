@@ -49,7 +49,7 @@ handle_req(JObj, Props) ->
     lager:debug("handling new voicemail in ~s", [VMBoxId]),
     {'ok', VMBoxJObj} = kz_datamgr:open_cache_doc(AccountDb, VMBoxId),
 
-    UserId = kzd_voicemail_box:owner_id(VMBoxJObj, VMBoxId),
+    UserId = kzd_voicemail_box:owner_id(VMBoxJObj, AccountId),
 
     OptionsPath = [<<"notify">>, <<"callback">>],
     VMBoxNotifyList = kz_json:get_value(OptionsPath, VMBoxJObj, []),
